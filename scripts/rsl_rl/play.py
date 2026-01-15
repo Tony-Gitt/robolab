@@ -240,20 +240,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if not args_cli.push_robot:
         env_cfg.events.push_robot = None
     env_cfg.episode_length_s = 40.0
-
-    env_cfg.commands.ranges.lin_vel_x = (0.6, 0.6)
-    env_cfg.commands.ranges.lin_vel_y = (0.0, 0.0)
-    env_cfg.commands.ranges.heading = (0.0, 0.0)
+    env_cfg.commands.heading_command=False
+    env_cfg.commands.rel_standing_envs = 0.0
 
     if args_cli.plane:
-       env_cfg.scene_context.terrain_generator = None
-       env_cfg.scene_context.terrain_type = "plane"
+        env_cfg.scene.terrain.terrain_generator = None
+        env_cfg.scene.terrain.terrain_type = "plane"
 
-    if env_cfg.scene_context.terrain_generator is not None:
-        env_cfg.scene_context.terrain_generator.num_rows = 5
-        env_cfg.scene_context.terrain_generator.num_cols = 5
-        env_cfg.scene_context.terrain_generator.curriculum = False
-        env_cfg.scene_context.terrain_generator.difficulty_range = (1.0, 1.0)
+    if env_cfg.scene.terrain.terrain_generator is not None:
+        env_cfg.scene.terrain.terrain_generator.num_rows = 5
+        env_cfg.scene.terrain.terrain_generator.num_cols = 5
+        env_cfg.scene.terrain.terrain_generator.curriculum = False
+        env_cfg.scene.terrain.terrain_generator.difficulty_range = (1.0, 1.0)
 
     if hasattr(env_cfg, "attn_enc"):
         visualizer = VisualizationMarkers(env_cfg.attn_enc.marker_cfg)
@@ -277,6 +275,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
+    env.unwrapped.command_generator.command[:, 0] = 0.0
+    env.unwrapped.command_generator.command[:, 1] = 0.0
+    env.unwrapped.command_generator.command[:, 2] = 0.0
 
     if hasattr(env_cfg, 'interrupt') and env_cfg.interrupt.use_interrupt:
         env.unwrapped.interrupt_rad_curriculum = torch.ones(env_cfg.scene.num_envs, dtype=torch.float, device=env.unwrapped.device, requires_grad=False)

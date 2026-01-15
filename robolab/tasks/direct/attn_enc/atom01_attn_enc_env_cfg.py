@@ -168,7 +168,7 @@ class ATOM01RewardCfg(RewardCfg):
                 "ankle_height":0.04})
 
 
-color = [[float(c) for c in mpl.colormaps['viridis'](i/9.0)[:-1]] for i in range(10)]
+color = [tuple(float(c) for c in mpl.colormaps["viridis"](i / 9.0)[:-1]) for i in range(10)]
 markers = {}
 for i in range(10):
     markers[f"hit_{i}"] = sim_utils.SphereCfg(

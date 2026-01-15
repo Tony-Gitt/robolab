@@ -45,9 +45,23 @@ from robolab.tasks.direct.base.base_env import BaseEnv
 
 class Keyboard(DeviceBase):
 
-    def __init__(self, env: BaseEnv):
-        """Initialize the keyboard layer."""
+    def __init__(self, env: BaseEnv, lin_vel_step: float = 0.05, ang_vel_step: float = 0.05):
+        """Initialize the keyboard layer.
+        
+        Args:
+            env: The environment to control.
+            lin_vel_step: Step size for linear velocity control.
+            ang_vel_step: Step size for angular velocity control.
+        """
         self.env = env
+        self.lin_vel_step = lin_vel_step
+        self.ang_vel_step = ang_vel_step
+        
+        # velocity command state
+        self.lin_vel_x = 0.0
+        self.lin_vel_y = 0.0
+        self.ang_vel = 0.0
+        
         # acquire omniverse interfaces
         self._appwindow = omni.appwindow.get_default_app_window()
         self._input = carb.input.acquire_input_interface()
@@ -61,6 +75,13 @@ class Keyboard(DeviceBase):
         self._create_key_bindings()
         # dictionary for additional callbacks
         self._additional_callbacks = dict()
+        
+        print("[Keyboard] Velocity control initialized:")
+        print("  W/S: Forward/Backward")
+        print("  A/D: Left/Right turn")
+        print("  Q/E: Strafe left/right")
+        print("  X: Stop (zero velocity)")
+        print("  R: Reset environment")
 
     def __del__(self):
         """Release the keyboard interface."""
@@ -96,17 +117,64 @@ class Keyboard(DeviceBase):
             https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/input-devices/keyboard.html
         """
         # apply the command when pressed
-        if event.type == carb.input.KeyboardEventType.KEY_PRESS:
+        if event.type == carb.input.KeyboardEventType.KEY_PRESS or event.type == carb.input.KeyboardEventType.KEY_REPEAT:
             if event.input.name in self._INPUT_KEY_MAPPING:
-                if event.input.name == "R":
+                key = event.input.name
+                
+                # Reset environment
+                if key == "R":
                     self.env.episode_length_buf = torch.ones_like(self.env.episode_length_buf) * 1e6
+                    print("[Keyboard] Environment reset triggered")
+                # Forward/Backward (lin_vel_x)
+                elif key == "W":
+                    self.lin_vel_x += self.lin_vel_step
+                    self._update_commands()
+                elif key == "S":
+                    self.lin_vel_x -= self.lin_vel_step
+                    self._update_commands()
+                # Turn left/right (ang_vel)
+                elif key == "Q":
+                    self.ang_vel += self.ang_vel_step
+                    self._update_commands()
+                elif key == "E":
+                    self.ang_vel -= self.ang_vel_step
+                    self._update_commands()
+                # Strafe left/right (lin_vel_y)
+                elif key == "A":
+                    self.lin_vel_y += self.lin_vel_step
+                    self._update_commands()
+                elif key == "D":
+                    self.lin_vel_y -= self.lin_vel_step
+                    self._update_commands()
+                # Stop (zero velocity)
+                elif key == "X":
+                    self.lin_vel_x = 0.0
+                    self.lin_vel_y = 0.0
+                    self.ang_vel = 0.0
+                    self._update_commands()
+                    print("[Keyboard] Stopped - all velocities set to zero")
 
         # since no error, we are fine :)
         return True
 
+    def _update_commands(self):
+        """Update the velocity commands in the environment."""
+        env = self.env.unwrapped
+        commands = env.command_generator.command
+        commands[:, 0] = self.lin_vel_x  # lin_vel_x
+        commands[:, 1] = self.lin_vel_y  # lin_vel_y
+        commands[:, 2] = self.ang_vel    # ang_vel
+        print(f"[Keyboard] Vel: vx={self.lin_vel_x:.2f}, vy={self.lin_vel_y:.2f}, ang_vel={self.ang_vel:.2f}")
+
     def _create_key_bindings(self):
         """Creates default key binding."""
         self._INPUT_KEY_MAPPING = {
-            # forward command
-            "R": "reset envs",
+            "W": "forward",
+            "S": "backward", 
+            "Q": "turn_left",
+            "E": "turn_right",
+            "A": "strafe_left",
+            "D": "strafe_right",
+            "X": "stop",
+            "R": "reset_envs",
         }
