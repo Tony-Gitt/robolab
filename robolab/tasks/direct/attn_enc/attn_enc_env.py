@@ -61,12 +61,12 @@ class AttnEncEnv(BaseEnv):
             current_actor_obs = torch.cat(
                 [
                     ang_vel * self.obs_scales.ang_vel,
-                    lin_vel * self.obs_scales.lin_vel,
                     projected_gravity * self.obs_scales.projected_gravity,
                     command * self.obs_scales.commands,
                     joint_pos * self.obs_scales.joint_pos,
                     joint_vel * self.obs_scales.joint_vel,
                     action * self.obs_scales.actions,
+                    lin_vel * self.obs_scales.lin_vel,
                 ],
                 dim=-1,
             )

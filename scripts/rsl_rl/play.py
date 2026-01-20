@@ -112,10 +112,13 @@ class TorchAttnEncPolicyExporter(torch.nn.Module):
         self.actor = copy.deepcopy(policy.actor)
         self.encoder = copy.deepcopy(policy.encoder)
         self.num_actor_obs = policy.num_actor_obs
-        self.critic_estimation = policy.critic_estimation
-        self.single_obs_dim = policy.single_obs_dim
-        if self.critic_estimation:
+        self.enable_critic_estimation = policy.enable_critic_estimation
+        self.enable_obs_encoder = policy.enable_obs_encoder
+        self.single_actor_obs_dim = policy.single_actor_obs_dim
+        if self.enable_critic_estimation:
             self.estimator = copy.deepcopy(policy.estimator)
+        if self.enable_obs_encoder:
+            self.actor_obs_encoder = copy.deepcopy(policy.actor_obs_encoder)
         # copy normalizer if exists
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
@@ -125,15 +128,21 @@ class TorchAttnEncPolicyExporter(torch.nn.Module):
     def forward(self, x):
         prop_obs = self.normalizer(x[:, :self.num_actor_obs])
         perception_obs = x[:, self.num_actor_obs:]
-        if self.critic_estimation:
-            critic_pred = self.estimator(prop_obs)
-            obs = torch.cat([prop_obs[:, -self.single_obs_dim:], critic_pred], dim=1) 
-            embedding, *_ = self.encoder(obs, perception_obs)
+        if self.enable_obs_encoder:
+            esti_obs = self.actor_obs_encoder(prop_obs)
+            enc_obs = torch.cat([prop_obs[:, -self.single_actor_obs_dim:], esti_obs], dim=-1)
         else:
-            obs = prop_obs[:, -self.single_obs_dim:]
-            embedding, *_ = self.encoder(obs, perception_obs)
-        embedding = torch.cat([obs, embedding], dim=-1)
-        return self.actor(embedding)
+            esti_obs = prop_obs
+            enc_obs = prop_obs[:, -self.single_actor_obs_dim:]
+        if self.enable_critic_estimation:
+            critic_pred = self.estimator(esti_obs)
+            enc_obs = torch.cat([enc_obs, critic_pred], dim=-1)
+        embedding, *_ = self.encoder(enc_obs, perception_obs)
+        if self.enable_critic_estimation or self.enable_obs_encoder:
+            obs = torch.cat([enc_obs, embedding], dim=-1)
+        else:
+            obs = torch.cat([prop_obs, embedding], dim=-1)
+        return self.actor(obs)
 
     @torch.jit.export
     def reset(self):
@@ -162,11 +171,14 @@ class OnnxAttnEncPolicyExporter(torch.nn.Module):
         self.actor = copy.deepcopy(policy.actor)
         self.encoder = copy.deepcopy(policy.encoder)
         self.num_actor_obs = policy.num_actor_obs
-        self.critic_estimation = policy.critic_estimation
-        self.single_obs_dim = policy.single_obs_dim
+        self.enable_critic_estimation = policy.enable_critic_estimation
+        self.enable_obs_encoder = policy.enable_obs_encoder
+        self.single_actor_obs_dim = policy.single_actor_obs_dim
         self.map_size = policy.map_size
-        if self.critic_estimation:
+        if self.enable_critic_estimation:
             self.estimator = copy.deepcopy(policy.estimator)
+        if self.enable_obs_encoder:
+            self.actor_obs_encoder = copy.deepcopy(policy.actor_obs_encoder)
         # copy normalizer if exists
         if normalizer:
             self.normalizer = copy.deepcopy(normalizer)
@@ -176,15 +188,21 @@ class OnnxAttnEncPolicyExporter(torch.nn.Module):
     def forward(self, x):
         prop_obs = self.normalizer(x[:, :self.num_actor_obs])
         perception_obs = x[:, self.num_actor_obs:]
-        if self.critic_estimation:
-            critic_pred = self.estimator(prop_obs)
-            obs = torch.cat([prop_obs[:, -self.single_obs_dim:], critic_pred], dim=1) 
-            embedding, *_ = self.encoder(obs, perception_obs)
+        if self.enable_obs_encoder:
+            esti_obs = self.actor_obs_encoder(prop_obs)
+            enc_obs = torch.cat([prop_obs[:, -self.single_actor_obs_dim:], esti_obs], dim=-1)
         else:
-            obs = prop_obs[:, -self.single_obs_dim:]
-            embedding, *_ = self.encoder(obs, perception_obs)
-        embedding = torch.cat([obs, embedding], dim=-1)
-        return self.actor(embedding)
+            esti_obs = prop_obs
+            enc_obs = prop_obs[:, -self.single_actor_obs_dim:]
+        if self.enable_critic_estimation:
+            critic_pred = self.estimator(esti_obs)
+            enc_obs = torch.cat([enc_obs, critic_pred], dim=-1)
+        embedding, *_ = self.encoder(enc_obs, perception_obs)
+        if self.enable_critic_estimation or self.enable_obs_encoder:
+            obs = torch.cat([enc_obs, embedding], dim=-1)
+        else:
+            obs = torch.cat([prop_obs, embedding], dim=-1)
+        return self.actor(obs)
 
     def export(self, path, filename):
         self.to("cpu")

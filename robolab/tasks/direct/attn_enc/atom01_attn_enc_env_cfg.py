@@ -62,7 +62,7 @@ from robolab.tasks.direct.base import (  # noqa:F401
 
 @configclass
 class ATOM01RewardCfg(RewardCfg):
-    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0, params={"std": 0.5})
+    track_lin_vel_xy_exp = RewTerm(func=mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.25, params={"std": 0.5})
     track_ang_vel_z_exp = RewTerm(func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"std": 0.5})
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.05)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -111,11 +111,6 @@ class ATOM01RewardCfg(RewardCfg):
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=[".*ankle_roll.*"])},
     )
-    feet_orientation_l2 = RewTerm(
-        func=mdp.body_orientation_l2,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=[".*ankle_roll.*"])},
-    )
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-1.0)
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -137,7 +132,7 @@ class ATOM01RewardCfg(RewardCfg):
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
-        weight=-0.06,
+        weight=-0.09,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -159,6 +154,14 @@ class ATOM01RewardCfg(RewardCfg):
     stand_still = RewTerm(func=mdp.stand_still, weight=-0.2, params={"pos_cfg": SceneEntityCfg("robot", joint_names=[".*_arm.*", ".*_elbow.*", ".*torso.*", ".*_thigh.*", ".*_knee.*", ".*_ankle.*"]),
                                                                      "vel_cfg": SceneEntityCfg("robot", joint_names=[".*_arm.*", ".*_elbow.*", ".*torso.*", ".*_thigh.*", ".*_knee.*", ".*_ankle.*"]), 
                                                                      "pos_weight": 0.0, "vel_weight": 0.04})
+    feet_height = RewTerm(
+        func=mdp.feet_height,
+        weight=0.2,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor", body_names=".*ankle_roll.*"),
+                "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll.*"),
+                "sensor_cfg1": SceneEntityCfg("left_feet_scanner"),
+                "sensor_cfg2": SceneEntityCfg("right_feet_scanner"),
+                "ankle_height":0.04,"threshold":0.02})
     undesired_foothold = RewTerm(
         func=mdp.undesired_foothold, 
         weight=-0.2,
@@ -222,7 +225,7 @@ class ATOM01AttnEncEnvCfg(BaseEnvCfg):
         self.events.scale_joint_parameters.params["asset_cfg"].joint_names = [".*_joint"]
         self.robot.action_scale = 0.25
         self.robot.actor_obs_history_length = 5
-        self.robot.critic_obs_history_length = 1
+        self.robot.critic_obs_history_length = 5
         self.normalization.height_scan_offset = 0.75
         self.sim.physx.gpu_collision_stack_size = 2**29
         self.noise.noise_scales.joint_vel = 1.75

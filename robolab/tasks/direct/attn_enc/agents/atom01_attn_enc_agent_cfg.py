@@ -104,11 +104,11 @@ for i in range(5):
 policy_obs_mirror_signs_expanded = policy_obs_mirror_signs * 5
 
 critic_obs_mirror_indices_expanded = []
-for i in range(1):
+for i in range(5):
     offset = i * 145
     for idx in critic_obs_mirror_indices:
         critic_obs_mirror_indices_expanded.append(idx + offset)
-critic_obs_mirror_signs_expanded = critic_obs_mirror_signs * 1
+critic_obs_mirror_signs_expanded = critic_obs_mirror_signs * 5
 
 @lru_cache(maxsize=None)
 def get_policy_obs_mirror_signs_tensor(device, dtype):
@@ -176,15 +176,19 @@ class RslRlPpoEncActorCriticCfg(RslRlPpoActorCriticCfg):
     head_num:int = 8
     map_size:tuple = (17, 11)
     map_resolution:float = 0.1
-    single_obs_dim:int = 78
-    critic_estimation:bool = False
+    actor_history_length:int = 5
+    critic_history_length:int = 1
+    enable_critic_estimation:bool = False
     estimation_slice:list = [78, 79, 80]
-    estimator_hidden_dims:list = [256, 64]
+    estimaiton_hidden_dims:list = [256, 64]
+    enable_obs_encoder:bool = False
+    obs_encoder_hidden_dims:list = [256, 64]
+    latent_dim:int = 16
 
 @configclass
 class RslRlPpoEncAlgorithmCfg(RslRlPpoAlgorithmCfg):
-    critic_estimation:bool = False
-    estimation_loss_coef:float = 1.0
+    enable_aux_loss:bool = False
+    aux_loss_coef:float = 1.0
 
 
 @configclass
@@ -207,14 +211,18 @@ class ATOM01AttnEncAgentCfg(BaseAgentCfg):
             actor_hidden_dims=[512, 256, 128],
             critic_hidden_dims=[512, 256, 128],
             activation="elu",
-            embedding_dim=64,
-            head_num=8,
+            embedding_dim=32,
+            head_num=4,
             map_size=(17, 11),
             map_resolution=0.1,
-            single_obs_dim=78,
-            critic_estimation=True,
-            estimation_slice=[78, 79, 80, 81, 82, 91, 92, 139, 140, 141, 142, 143, 144],
-            estimator_hidden_dims=[256, 64],
+            actor_history_length=5,
+            critic_history_length=5,
+            enable_critic_estimation=True,
+            estimation_slice=[78, 79, 80],
+            estimaiton_hidden_dims=[256, 64],
+            enable_obs_encoder=True,
+            latent_dim=32,
+            obs_encoder_hidden_dims=[256, 128],
         )
         self.algorithm = RslRlPpoEncAlgorithmCfg(
             class_name="PPO",
@@ -230,13 +238,13 @@ class ATOM01AttnEncAgentCfg(BaseAgentCfg):
             lam=0.95,
             desired_kl=0.01,
             max_grad_norm=1.0,
-            critic_estimation=True,
-            estimation_loss_coef=0.1,
+            enable_aux_loss=True,
+            aux_loss_coef=0.05,
             normalize_advantage_per_mini_batch=False,
             symmetry_cfg=RslRlSymmetryCfg(
                 use_data_augmentation=True, 
                 use_mirror_loss=True,
-                mirror_loss_coeff=0.2, 
+                mirror_loss_coeff=0.1, 
                 data_augmentation_func=data_augmentation_func
             ),
             rnd_cfg=None,  # RslRlRndCfg()
