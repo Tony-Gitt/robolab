@@ -27,37 +27,20 @@
 #
 # Copyright (c) 2024 Beijing RobotEra TECHNOLOGY CO.,LTD. All rights reserved.
 
-import math
 import numpy as np
 import mujoco, mujoco_viewer
 from tqdm import tqdm
-from collections import deque
 from scipy.spatial.transform import Rotation as R
 from robolab.assets import ISAAC_DATA_DIR
 import torch
 import os
 import cv2
-import matplotlib.pyplot as plt # Import matplotlib
 from pynput import keyboard
-from pathlib import Path
 import time
 from loop_rate_limiters import RateLimiter
 
 
 class cmd:
-    vx = 0.0
-    vy = 0.0
-    dyaw = 0.0
-    vx_increment = 0.1
-    vy_increment = 0.1
-    dyaw_increment = 0.1
-
-    min_vx = -1
-    max_vx = 2.5
-    min_vy = -0.8
-    max_vy = 0.8
-    min_dyaw = -1.5
-    max_dyaw = 1.5
     camera_follow = True
     reset_requested = False
 
@@ -68,41 +51,26 @@ class cmd:
     
     @classmethod
     def reset(cls):
-        """reset all velocities to zero"""
-        cls.vx = 0.0
-        cls.vy = 0.0
-        cls.dyaw = 0.0
-        print(f"Velocities reset: vx: {cls.vx:.2f}, vy: {cls.vy:.2f}, dyaw: {cls.dyaw:.2f}")
+        print(f"Reset")
+
 def on_press(key):
-    """Key press event handler"""
     try:
-        # Number key controls: 8/5 control forward/backward (vx), 4/6 control left/right (vy), 7/9 control left/right turn (dyaw)
-        if hasattr(key, 'char') and key.char is not None:
-            c = key.char.lower()
-            if c == 'f':
-                # toggle camera follow
-                cmd.toggle_camera_follow()
-            elif c == '0':
-                # request reset robot state in main loop (thread-safe flag)
-                cmd.reset_requested = True
-                print('Reset requested (0 key pressed)')
+        if key.char == 'f':
+            cmd.toggle_camera_follow()
+        elif key.char == '0':
+            cmd.reset_requested = True
     except AttributeError:
         pass
 
-def on_release(key):
-    """Key release event handler"""
-    # If movement should only occur while keys are held down, handle it here
+def on_release():
     pass
 
 def start_keyboard_listener():
-    """Start keyboard listener"""
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
     return listener
 
 def get_obs(data):
-    '''Extracts an observation from the mujoco data structure
-    '''
     q = data.qpos.astype(np.double)
     dq = data.qvel.astype(np.double)
     quat = data.sensor('orientation').data[[1, 2, 3, 0]].astype(np.double)
@@ -113,8 +81,6 @@ def get_obs(data):
     return (q, dq, quat, v, omega, gvec)
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
-    '''Calculates torques from position commands
-    '''
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
@@ -129,13 +95,13 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     Returns:
         None
     """
-
+    def frame_idx(t):
+        if loop and num_frames > 0:
+            return t % num_frames
+        return t if t < num_frames else num_frames - 1
+    
     print("=" * 60)
     print("Keyboard control instructions:")
-    print("  ↑ Up arrow: Increase forward speed (vx)")
-    print("  ↓ Down arrow: Decrease forward speed (vx)")
-    print("  ← Left arrow: Increase left turn rate (dyaw)")
-    print("  → Right arrow: Increase right turn rate (dyaw)")
     print("  0 key: Reset all speeds to 0")
     print("  F key: Toggle camera follow mode")
     print("=" * 60)
@@ -148,10 +114,7 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     m_input_vel=motion["joint_vel"]
 
     num_frames = min(m_input_pos.shape[0], m_input_vel.shape[0], motion_pos.shape[0], motion_quat.shape[0])
-    def frame_idx(t):
-        if loop and num_frames > 0:
-            return t % num_frames
-        return t if t < num_frames else num_frames - 1
+
 
     model = mujoco.MjModel.from_xml_path(cfg.sim_config.mujoco_model_path)
     model.opt.timestep = cfg.sim_config.dt
@@ -168,12 +131,9 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     
     os.environ['__GLX_VENDOR_LIBRARY_NAME'] = 'nvidia'
     os.environ['MUJOCO_GL'] = 'glfw'
-    # 根据 headless 参数选择渲染模式
     if headless:
         renderer = mujoco.Renderer(model, width=1920, height=1080)
-        # 设置视频写入器
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        # 创建并配置相机
         cam = mujoco.MjvCamera()
         cam.distance = 4.0      # 增加距离以获得更好的视角
         cam.azimuth = 45.0     # 水平旋转角度
@@ -183,7 +143,6 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     else:
         mode = 'window'
         viewer = mujoco_viewer.MujocoViewer(model, data, mode=mode, width=1920, height=1080)
-        # 设置窗口模式下的相机参数
         viewer.cam.distance = 4.0
         viewer.cam.azimuth = 45.0
         viewer.cam.elevation = -20.0
@@ -197,29 +156,17 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     hist_obs.fill(0.0)
 
     count_lowlevel = 0
-    control_freq = 1.0 / (cfg.sim_config.dt * cfg.sim_config.decimation)
-
-    # --- Data collection lists for plotting (LOW FREQUENCY ONLY) ---
-    time_data = []
-    commanded_joint_pos_data = []
-    actual_joint_pos_data = []
-    tau = np.zeros((cfg.robot_config.num_actions), dtype=np.double)  # Initialize tau
-    tau_data = []
-    commanded_lin_vel_x_data = []
-    commanded_lin_vel_y_data = []
-    commanded_ang_vel_z_data = []
-    actual_lin_vel_data = [] # Store [vx, vy] at low freq
-    actual_ang_vel_data = [] # Store [wz] at low freq
-    # -------------------------------------------------------------
+    tau = np.zeros((cfg.robot_config.num_actions), dtype=np.double)
     is_first_frame = True
+
+    control_freq = 1.0 / (cfg.sim_config.dt * cfg.sim_config.decimation)
     motion_t=0
-    start_time = time.time()
+
     for step in tqdm(range(int(cfg.sim_config.sim_duration / cfg.sim_config.dt)), desc="Simulating..."):
         if cmd.reset_requested:
             print('Performing reset: restoring qpos/qvel and zeroing commands')
             data.qpos[:] = initial_qpos
             data.qvel[:] = initial_qvel
-            # clear commands and history
             cmd.reset()
             data.ctrl[:] = 0.0
             mujoco.mj_forward(model, data)
@@ -252,9 +199,6 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
             obs[0, 52:75] = q_obs
             obs[0, 75:98] = dq_obs
             obs[0, 98:121] = action
-            # time.sleep(0.05)
-            # print("current command: lin vel x={:.2f}, lin vel y={:.2f}, ang vel z={:.2f}".format(cmd.vx, cmd.vy, cmd.dyaw))  
-            # print("current velocity: lin vel x={:.2f}, lin vel y={:.2f}, ang vel z={:.2f}".format(v[0], v[1], omega[2]))
 
             if is_first_frame:
                 hist_obs = np.tile(obs, (cfg.robot_config.frame_stack, 1))
@@ -270,26 +214,6 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
             for i in range(len(cfg.robot_config.usd2urdf)):
                 target_pos[cfg.robot_config.usd2urdf[i]] = target_q[i]
             target_pos = target_pos + cfg.robot_config.default_pos
-
-            # --- Capture actual state at this low-frequency step ---
-            # Note: q, v, omega were just computed by get_obs() for the current simulation step
-            # q_low_freq = q.copy()
-            # v_low_freq = v[:2].copy() # Capture x and y linear velocity
-            # omega_low_freq = omega[2].copy() # Capture z angular velocity
-            # -----------------------------------------------------
-
-            # --- Collect low-frequency data for plotting ---
-            # Use the exact simulation time at this low-freq step
-            # time_data.append(step * cfg.sim_config.dt)
-            # commanded_joint_pos_data.append(target_pos.copy())
-            # actual_joint_pos_data.append(q_low_freq) # Use the captured actual joint pos
-            # tau_data.append(tau.copy())
-            # commanded_lin_vel_x_data.append(cmd.vx)
-            # commanded_lin_vel_y_data.append(cmd.vy)
-            # commanded_ang_vel_z_data.append(cmd.dyaw)
-            # actual_lin_vel_data.append(v_low_freq) # Use the captured actual lin vel
-            # actual_ang_vel_data.append(omega_low_freq) # Use the captured actual ang vel
-            # # ----------------------------------------------
 
             if headless:
                 renderer.update_scene(data, camera=cam)
@@ -322,11 +246,8 @@ def run_mujoco(policy, cfg, headless=False,loop=False,motion_file=None):
     else:
         viewer.close()
     keyboard_listener.stop()
-     # --- Plotting Section (Using only low-frequency data) ---
-
     print("Simulation finished. Generating plots...")
 
-    # --- End Plotting Section ---
 
     
 if __name__ == '__main__':

@@ -8,34 +8,19 @@ import time
 
 class cmd:
     reset_requested = False
-    @classmethod
-    def reset(cls):
-        """reset all velocities to zero"""
-        cls.vx = 0.0
-        cls.vy = 0.0
-        cls.dyaw = 0.0
-        print(f"Velocities reset: vx: {cls.vx:.2f}, vy: {cls.vy:.2f}, dyaw: {cls.dyaw:.2f}")
 
 def on_press(key):
-    """Key press event handler"""
     try:
-        # Number key controls: 8/5 control forward/backward (vx), 4/6 control left/right (vy), 7/9 control left/right turn (dyaw)
-        if hasattr(key, 'char') and key.char is not None:
-            c = key.char.lower()
-            if c == '0':
-                # 8 -> forward (increase vx)
-                cmd.reset_requested = True
-                print('Reset requested (0 key pressed)')
+        if key.char == '0':
+            cmd.reset_requested = True
+            print('Reset')
     except AttributeError:
         pass
 
 def on_release(key):
-    """Key release event handler"""
-    # If movement should only occur while keys are held down, handle it here
     pass
 
 def start_keyboard_listener():
-    """Start keyboard listener"""
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     listener.start()
     return listener
@@ -52,17 +37,6 @@ def load_qpos_from_csv(csv_file):
     return qpos_list
 
 def run_mujoco(cfg,loop=False,motion_file=None):
-    """
-    Run the Mujoco simulation using the provided policy and configuration.
-
-    Args:
-        policy: The policy used for controlling the simulation.
-        cfg: The configuration object containing simulation settings.
-        headless: If True, run without GUI and save video.
-
-    Returns:
-        None
-    """
     print("=" * 60)
     keyboard_listener = start_keyboard_listener()
 
@@ -122,8 +96,6 @@ def run_mujoco(cfg,loop=False,motion_file=None):
     else:
         viewer.close()
     keyboard_listener.stop()
-     # --- Plotting Section (Using only low-frequency data) ---
-
     print("Simulation finished.")
 
     
@@ -140,12 +112,6 @@ if __name__ == '__main__':
         class sim_config:
             mujoco_model_path = f'{ISAAC_DATA_DIR}/robots/roboparty/atom01/mjcf/atom01.xml'
             sim_duration = 1000.0
-            dt = 0.025
-            decimation = 1
-
-        class robot_config:
-            num_actions = 23
-            # 'left_thigh_yaw_joint', 'right_thigh_yaw_joint', 'torso_joint', 'left_thigh_roll_joint', 'right_thigh_roll_joint', 'left_arm_pitch_joint', 'right_arm_pitch_joint', 'left_thigh_pitch_joint', 'right_thigh_pitch_joint', 'left_arm_roll_joint', 'right_arm_roll_joint', 'left_knee_joint', 'right_knee_joint', 'left_arm_yaw_joint', 'right_arm_yaw_joint', 'left_ankle_pitch_joint', 'right_ankle_pitch_joint', 'left_elbow_pitch_joint', 'right_elbow_pitch_joint', 'left_ankle_roll_joint', 'right_ankle_roll_joint', 'left_elbow_yaw_joint', 'right_elbow_yaw_joint'
-            usd2urdf = [0, 6, 12, 1, 7, 13, 18, 2, 8, 14, 19, 3, 9, 15, 20, 4, 10, 16, 21, 5, 11, 17, 22]
-
+            dt = 0.02
+            
     run_mujoco(Sim2simCfg(),args.loop,args.motion_file)
