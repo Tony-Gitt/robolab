@@ -103,12 +103,14 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 
 """Rest everything follows."""
 
-import gymnasium as gym
+import logging
 import os
-import torch
+import time
 from datetime import datetime
 
-import omni
+import torch
+import gymnasium as gym
+
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner, AMPRunner
 
 from isaaclab.envs import (
@@ -126,6 +128,8 @@ from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+
+logger = logging.getLogger(__name__)
 
 import robolab.tasks
 # PLACEHOLDER: Extension template (do not remove this comment)
@@ -183,9 +187,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # set the IO descriptors output directory if requested
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
         env_cfg.export_io_descriptors = args_cli.export_io_descriptors
-        env_cfg.io_descriptors_output_dir = log_dir
     else:
-        omni.log.warn(
+        logger.warning(
             "IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported."
         )
 
